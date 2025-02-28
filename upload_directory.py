@@ -4,9 +4,7 @@ import json
 from pathlib import Path
 import mimetypes
 import time
-
-# API configuration
-BASE_URL = "https://na.folderfort.com/api/v1"
+import re
 
 def get_api_token():
     """Ask the user for their API token"""
@@ -14,9 +12,24 @@ def get_api_token():
     print("You can find this in your account settings on the FolderFort website.")
     return input("API Token: ").strip()
 
-def create_folder(name, parent_id=None, api_token=None):
+def get_base_url():
+    """Ask the user for the base URL and format it correctly"""
+    default_url = "https://na.folderfort.com"
+    print(f"Please provide the base URL (default: {default_url}):")
+    base_url = input("Base URL: ").strip() or default_url
+
+    # Remove trailing slash if present
+    base_url = base_url.rstrip('/')
+
+    # Check if the URL already contains /api
+    if not re.search(r'/api(/v1)?$', base_url):
+        base_url = f"{base_url}/api/v1"
+
+    return base_url
+
+def create_folder(name, parent_id=None, api_token=None, base_url=None):
     """Create a folder and return its ID"""
-    folder_url = f"{BASE_URL}/folders"
+    folder_url = f"{base_url}/folders"
     headers = {"Authorization": f"Bearer {api_token}"}
     payload = {
         "name": name,
@@ -31,9 +44,9 @@ def create_folder(name, parent_id=None, api_token=None):
     data = response.json()
     return data.get("folder", {}).get("id")
 
-def upload_file(file_path, parent_id=None, api_token=None):
+def upload_file(file_path, parent_id=None, api_token=None, base_url=None):
     """Upload a file to the specified parent folder"""
-    upload_url = f"{BASE_URL}/uploads"
+    upload_url = f"{base_url}/uploads"
     headers = {"Authorization": f"Bearer {api_token}"}
 
     # Determine file MIME type
@@ -58,7 +71,7 @@ def upload_file(file_path, parent_id=None, api_token=None):
         print(f"Error uploading {file_path}: {str(e)}")
         return False
 
-def upload_directory(directory_path, parent_id=None, api_token=None, exclude_patterns=None):
+def upload_directory(directory_path, parent_id=None, api_token=None, base_url=None, exclude_patterns=None):
     """Recursively upload a directory and its contents"""
     if exclude_patterns is None:
         exclude_patterns = ['.git', '__pycache__', '.DS_Store', '.env', 'venv', 'node_modules']
@@ -81,20 +94,24 @@ def upload_directory(directory_path, parent_id=None, api_token=None, exclude_pat
             if item.is_dir():
                 # Create folder
                 folder_name = item.name
-                folder_id = create_folder(folder_name, parent_id, api_token)
+                folder_id = create_folder(folder_name, parent_id, api_token, base_url)
                 if folder_id:
                     print(f"Created folder: {folder_name} (ID: {folder_id})")
                     # Recursively upload contents of this folder
-                    upload_directory(item, folder_id, api_token, exclude_patterns)
+                    upload_directory(item, folder_id, api_token, base_url, exclude_patterns)
             else:
                 # Upload file
-                upload_file(item, parent_id, api_token)
+                upload_file(item, parent_id, api_token, base_url)
                 # Add a small delay to avoid overwhelming the API
                 time.sleep(0.5)
         except Exception as e:
             print(f"Error processing {item}: {str(e)}")
 
 def main():
+    # Get base URL from user
+    base_url = get_base_url()
+    print(f"Using API URL: {base_url}")
+
     # Get API token from user
     api_token = get_api_token()
     if not api_token:
@@ -111,12 +128,12 @@ def main():
     parent_id = None  # Root folder
     if choice == 'f':
         folder_name = input("Enter folder name: ")
-        parent_id = create_folder(folder_name, None, api_token)
+        parent_id = create_folder(folder_name, None, api_token, base_url)
         if not parent_id:
             print("Failed to create parent folder. Uploading to root instead.")
 
     # Start uploading
-    upload_directory(current_dir, parent_id, api_token)
+    upload_directory(current_dir, parent_id, api_token, base_url)
     print("Directory upload completed.")
 
 if __name__ == "__main__":
